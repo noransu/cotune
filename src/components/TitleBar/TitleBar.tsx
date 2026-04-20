@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useThemeStore } from '../../stores/theme.store'
 import type { Tab } from '../../App'
+import logoImg from '../../assets/cotune.jpg'
 
 interface TitleBarProps {
   tabs: Tab[]
@@ -29,8 +30,14 @@ export default function TitleBar({
 
   return (
     <div className="h-10 flex items-center bg-panel dark:bg-panel-dark border-b border-border dark:border-border-dark select-none app-drag">
+      {/* Logo */}
+      <div className="flex items-center gap-1.5 pl-3 pr-2 app-no-drag">
+        <img src={logoImg} alt="CoTune" className="w-5 h-5 rounded" />
+        <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">CoTune</span>
+      </div>
+
       {/* Tabs */}
-      <div className="flex items-center h-full pl-2 flex-1 app-no-drag overflow-x-auto">
+      <div className="flex items-center h-full flex-1 app-no-drag overflow-x-auto">
         {tabs.map((tab) => (
           <TabItem
             key={tab.id}
