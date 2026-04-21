@@ -57,10 +57,13 @@ export class ProcessManager extends EventEmitter {
   async startProcess(info: Omit<ProcessInfo, 'status' | 'pid'>): Promise<ProcessInfo> {
     const processKey = `${info.projectId}-${info.type}`
 
-    // Kill existing process if any
+    // Kill existing process if any (tracked by us)
     if (this.processes.has(processKey)) {
       await this.stopProcess(processKey)
     }
+
+    // Kill any orphaned process still occupying the target port
+    await this.killPortOccupier(info.port)
 
     const processInfo: ProcessInfo = { ...info, status: 'starting' }
 
@@ -159,6 +162,64 @@ export class ProcessManager extends EventEmitter {
   async stopAll(): Promise<void> {
     const keys = Array.from(this.processes.keys())
     await Promise.all(keys.map((key) => this.stopProcess(key)))
+  }
+
+  /**
+   * Kill any process occupying the given port.
+   *
+   * This handles orphaned processes from a previous CoTune session that
+   * weren't cleaned up (e.g. crash, force-quit). Without this, the new
+   * dev server would fail with EADDRINUSE.
+   */
+  private async killPortOccupier(port: number): Promise<void> {
+    if (!port) return
+    try {
+      if (os.platform() === 'win32') {
+        // netstat -ano | findstr :PORT → extract PIDs → taskkill
+        const out = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, {
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        const pids = new Set<string>()
+        for (const line of out.trim().split('\n')) {
+          const parts = line.trim().split(/\s+/)
+          const pid = parts[parts.length - 1]
+          if (pid && pid !== '0') pids.add(pid)
+        }
+        for (const pid of pids) {
+          try { execSync(`taskkill /F /PID ${pid}`, { stdio: 'pipe' }) } catch { /* ignore */ }
+        }
+      } else {
+        // macOS / Linux: lsof -ti:PORT returns PIDs (one per line)
+        const out = execSync(`lsof -ti:${port}`, {
+          encoding: 'utf-8',
+          timeout: 5000,
+          stdio: ['pipe', 'pipe', 'pipe']
+        })
+        const pids = out.trim().split('\n').filter(Boolean)
+        for (const pid of pids) {
+          try { process.kill(parseInt(pid), 'SIGKILL') } catch { /* already dead */ }
+        }
+      }
+      // Brief wait for the OS to fully release the port
+      if (await this.isPortInUse(port)) {
+        await new Promise((r) => setTimeout(r, 500))
+      }
+    } catch {
+      // lsof/netstat returns exit code 1 when no process found — that's fine
+    }
+  }
+
+  private isPortInUse(port: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const server = net.createServer()
+      server.once('error', () => resolve(true))
+      server.once('listening', () => {
+        server.close(() => resolve(false))
+      })
+      server.listen(port, '127.0.0.1')
+    })
   }
 
   getProcessInfo(processKey: string): ProcessInfo | undefined {
