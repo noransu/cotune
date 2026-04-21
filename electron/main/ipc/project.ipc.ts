@@ -209,6 +209,7 @@ interface DetectedBackend {
   command: string
   port: number
   name: string
+  modulePath?: string  // specific submodule path (different from root when multi-module)
 }
 
 function detectSingleBackend(dirPath: string): DetectedBackend {
@@ -267,7 +268,8 @@ function detectAllBackendEntries(dirPath: string): DetectedBackend[] {
           entries.push({
             framework: 'spring-boot', name: mod.name,
             command: `${mvn} spring-boot:run -pl ${mod.name} -am`,
-            port: readSpringBootPort(mod.path) || (8080 + entries.length)
+            port: readSpringBootPort(mod.path) || (8080 + entries.length),
+            modulePath: mod.path
           })
         }
       }
@@ -281,7 +283,8 @@ function detectAllBackendEntries(dirPath: string): DetectedBackend[] {
         entries.push({
           framework: 'spring-boot', name: mainClasses[i].className,
           command: `${mvn} spring-boot:run -Dspring-boot.run.main-class=${mainClasses[i].fqcn}`,
-          port: readSpringBootPort(dirPath) || (8080 + i)
+          port: readSpringBootPort(dirPath) || (8080 + i),
+          modulePath: dirPath
         })
       }
       return entries
@@ -297,7 +300,8 @@ function detectAllBackendEntries(dirPath: string): DetectedBackend[] {
         entries.push({
           framework: 'spring-boot', name: mod.name,
           command: `${gradle} :${mod.name}:bootRun`,
-          port: readSpringBootPort(mod.path) || (8080 + entries.length)
+          port: readSpringBootPort(mod.path) || (8080 + entries.length),
+          modulePath: mod.path
         })
       }
     }

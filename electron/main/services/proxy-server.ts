@@ -92,6 +92,7 @@ export class ProxyServer extends EventEmitter {
       })
 
       this.server.listen(this.port, () => {
+        console.log(`[Proxy] Server started on :${this.port}, ${this.rules.length} rules loaded, frontend -> :${this.frontendTarget.port}`)
         this.emit('started', this.port)
         resolve()
       })

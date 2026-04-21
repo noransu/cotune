@@ -46,7 +46,6 @@ export async function parseSpringBootRoutes(
     }
   }
 
-  // Auto-detect context-path
   const contextPath = detectContextPath(projectPath)
 
   return { routes, contextPath }
@@ -58,7 +57,6 @@ function parseJavaFile(
   projectPath: string
 ): ParsedRoute[] {
   const routes: ParsedRoute[] = []
-  const lines = content.split('\n')
 
   // Check if this is a Controller class
   const isController =
@@ -72,17 +70,63 @@ function parseJavaFile(
   // Extract class-level @RequestMapping prefix
   const classPrefix = extractClassLevelPath(content)
 
-  // Parse method-level annotations
+  // Pre-process: join multi-line annotations into single lines for easier parsing.
+  // Java annotations like @PostMapping(\n  value = "/path",\n  produces = ...\n)
+  // need to be collapsed into one logical line.
+  const lines = content.split('\n')
+  const mergedLines: { text: string; lineNumber: number }[] = []
+  let buffer = ''
+  let parenDepth = 0
+  let bufferStart = 0
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (buffer) {
+      buffer += ' ' + line.trim()
+      for (const ch of line) {
+        if (ch === '(') parenDepth++
+        else if (ch === ')') parenDepth--
+      }
+      if (parenDepth <= 0) {
+        mergedLines.push({ text: buffer.trim(), lineNumber: bufferStart + 1 })
+        buffer = ''
+        parenDepth = 0
+      }
+    } else {
+      const trimmed = line.trim()
+      // Detect start of a mapping annotation
+      const isAnnotationStart = /^@(GetMapping|PostMapping|PutMapping|DeleteMapping|PatchMapping|RequestMapping)\s*(\(|$)/.test(trimmed)
+      if (isAnnotationStart) {
+        parenDepth = 0
+        for (const ch of trimmed) {
+          if (ch === '(') parenDepth++
+          else if (ch === ')') parenDepth--
+        }
+        if (parenDepth > 0) {
+          // Annotation spans multiple lines
+          buffer = trimmed
+          bufferStart = i
+        } else {
+          mergedLines.push({ text: trimmed, lineNumber: i + 1 })
+        }
+      } else {
+        mergedLines.push({ text: trimmed, lineNumber: i + 1 })
+      }
+    }
+  }
+  // Flush remaining buffer
+  if (buffer) {
+    mergedLines.push({ text: buffer.trim(), lineNumber: bufferStart + 1 })
+  }
+
+  // Parse merged lines
   let currentAnnotation: {
     method: ParsedRoute['method']
     paths: string[]
     lineNumber: number
   } | null = null
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim()
-    const lineNumber = i + 1
-
+  for (const { text: line, lineNumber } of mergedLines) {
     // Check for method-level mapping annotations
     for (const [annotation, httpMethod] of Object.entries(METHOD_ANNOTATIONS)) {
       const annotationRegex = new RegExp(`@${annotation}\\s*(?:\\(([^)]*)\\))?`)
@@ -137,7 +181,11 @@ function parseJavaFile(
 function extractClassLevelPath(content: string): string {
   // Match @RequestMapping on the class level (before class keyword)
   const classSection = content.split(/class\s+\w+/)[0] || ''
-  const match = classSection.match(/@RequestMapping\s*\(\s*([^)]*)\)/)
+  // Collapse multi-line annotation: remove newlines between ( and )
+  const collapsed = classSection.replace(/@RequestMapping\s*\([^)]*\)/s, (m) =>
+    m.replace(/\s+/g, ' ')
+  )
+  const match = collapsed.match(/@RequestMapping\s*\(\s*([^)]*)\)/)
   if (!match) return ''
   return extractPaths(match[1], '*')[0] || ''
 }
@@ -145,19 +193,56 @@ function extractClassLevelPath(content: string): string {
 function extractPaths(annotationValue: string, _method: string): string[] {
   if (!annotationValue.trim()) return ['']
 
-  // Handle value = "path" or value = {"/path1", "/path2"}
-  // Or just "path" without value =
   const paths: string[] = []
 
-  // Match string literals
+  // Strip out non-path attributes to avoid extracting "application/json" from produces, etc.
+  // Known non-path attributes in Spring mapping annotations:
+  const nonPathAttrs = ['produces', 'consumes', 'headers', 'params', 'name', 'method']
+
+  // First, try to extract explicit value= or path= attributes
+  const valueMatch = annotationValue.match(/(?:value|path)\s*=\s*(\{[^}]*\}|"[^"]*")/)
+  if (valueMatch) {
+    // Extract all string literals from the value/path attribute
+    const valueStr = valueMatch[1]
+    const stringRegex = /"([^"]*)"/g
+    let m: RegExpExecArray | null
+    while ((m = stringRegex.exec(valueStr)) !== null) {
+      paths.push(m[1])
+    }
+    return paths.length > 0 ? paths : ['']
+  }
+
+  // No explicit value= or path= attribute.
+  // If the annotation has other named attributes (produces=, method=, etc.),
+  // only extract the unnamed first argument as the path.
+  const hasNamedAttr = nonPathAttrs.some(attr =>
+    new RegExp(`\\b${attr}\\s*=`).test(annotationValue)
+  )
+
+  if (hasNamedAttr) {
+    // There are named attributes but no value=. The path might be the first unnamed arg.
+    // e.g. @RequestMapping("/path", method = GET) — the "/path" is before any named attr
+    const beforeFirstAttr = annotationValue.split(/\b(?:produces|consumes|headers|params|name|method)\s*=/)[0]
+    const stringRegex = /"([^"]*)"/g
+    let m: RegExpExecArray | null
+    while ((m = stringRegex.exec(beforeFirstAttr)) !== null) {
+      // Skip obvious non-path values
+      if (!m[1].includes('/') && m[1].includes('.')) continue
+      paths.push(m[1])
+    }
+    return paths.length > 0 ? paths : ['']
+  }
+
+  // Simple case: @GetMapping("/path") or @GetMapping({"/p1", "/p2"})
   const stringRegex = /"([^"]*)"/g
   let stringMatch: RegExpExecArray | null
   while ((stringMatch = stringRegex.exec(annotationValue)) !== null) {
+    // Skip obvious non-path values like "application/json"
+    if (stringMatch[1].startsWith('application/') || stringMatch[1].startsWith('text/')) continue
     paths.push(stringMatch[1])
   }
 
   if (paths.length === 0) {
-    // Maybe it's just the path without quotes (unusual but possible)
     const cleanValue = annotationValue
       .replace(/value\s*=\s*/, '')
       .replace(/path\s*=\s*/, '')

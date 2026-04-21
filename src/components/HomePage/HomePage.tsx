@@ -11,92 +11,191 @@ interface HomePageProps {
 }
 
 export default function HomePage({ onOpenBrowser }: HomePageProps) {
-  const { isRunning, startProxy, stopProxy, parseRoutes, rules } = useProxyStore()
-  const { activeProjectId, projects, setProjectStatus } = useProjectStore()
+  const { startProxy, stopProxy, parseRoutes } = useProxyStore()
+  const { activeProjectId, projects, setProjectStatus, setServiceStatus } = useProjectStore()
   const activeProject = projects.find((p) => p.id === activeProjectId)
   const [activePtyId, setActivePtyId] = useState<string | null>(null)
   const [startingStatus, setStartingStatus] = useState<string | null>(null)
 
-  const handleStartAll = async () => {
-    if (!activeProject || !window.api) return
+  // ── Per-service start/stop (called from ProjectPanel) ─────────────────
+
+  const handleStartService = useCallback(async (projectId: string, serviceKey: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project || !window.api) return
 
     try {
-      // Start non-external backends only
-      for (let i = 0; i < activeProject.backends.length; i++) {
-        const be = activeProject.backends[i]
+      if (serviceKey === 'frontend' && project.frontend) {
+        setServiceStatus(projectId, 'frontend', 'starting')
+        await window.api.processStart({
+          id: `${projectId}-fe`,
+          type: 'frontend',
+          projectId,
+          command: project.frontend.command,
+          cwd: project.frontend.path,
+          port: project.frontend.port
+        })
+        setServiceStatus(projectId, 'frontend', 'running')
+      }
 
-        // Always parse routes (even for external backends, we need proxy rules)
+      const beMatch = serviceKey.match(/^be-(\d+)$/)
+      if (beMatch) {
+        const idx = parseInt(beMatch[1])
+        const be = project.backends[idx]
+        if (!be || be.external) return
+
+        setServiceStatus(projectId, serviceKey, 'starting')
+
         if (be.framework === 'spring-boot') {
-          setStartingStatus(`Parsing routes: ${be.name}...`)
-          await parseRoutes(be.path, be.port, {
+          // Use modulePath (submodule dir) for route scanning, fallback to root path
+          const scanPath = be.modulePath || be.path
+          await parseRoutes(scanPath, be.port, {
             contextPath: be.contextPath,
             apiPrefix: be.apiPrefix
           })
         }
 
-        // Skip starting external backends (managed by IDEA/IntelliJ)
+        await window.api.processStart({
+          id: `${projectId}-be-${idx}`,
+          type: 'backend',
+          projectId,
+          command: be.command,
+          cwd: be.path,  // cwd stays as root (Maven -pl needs root)
+          port: be.port
+        })
+        setServiceStatus(projectId, serviceKey, 'running')
+      }
+
+      deriveProjectStatus(projectId)
+    } catch (err) {
+      setServiceStatus(projectId, serviceKey, 'error')
+    }
+  }, [projects, setServiceStatus, parseRoutes])
+
+  const handleStopService = useCallback(async (projectId: string, serviceKey: string) => {
+    if (!window.api) return
+    try {
+      if (serviceKey === 'frontend') {
+        await window.api.processStop(`${projectId}-fe`)
+        setServiceStatus(projectId, 'frontend', 'stopped')
+      }
+      const beMatch = serviceKey.match(/^be-(\d+)$/)
+      if (beMatch) {
+        const idx = parseInt(beMatch[1])
+        await window.api.processStop(`${projectId}-be-${idx}`)
+        setServiceStatus(projectId, serviceKey, 'stopped')
+      }
+      deriveProjectStatus(projectId)
+    } catch {
+      // ignore
+    }
+  }, [setServiceStatus])
+
+  // ── Per-project start all / stop all (called from ProjectPanel) ───────
+
+  const handleStartProject = useCallback(async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project || !window.api) return
+
+    try {
+      // Start non-external backends
+      for (let i = 0; i < project.backends.length; i++) {
+        const be = project.backends[i]
+
+        if (be.framework === 'spring-boot') {
+          setStartingStatus(`Parsing routes: ${be.name}...`)
+          const scanPath = be.modulePath || be.path
+          await parseRoutes(scanPath, be.port, {
+            contextPath: be.contextPath,
+            apiPrefix: be.apiPrefix
+          })
+        }
+
         if (be.external) continue
 
-        setStartingStatus(`Starting backend: ${be.name}...`)
+        setServiceStatus(projectId, `be-${i}`, 'starting')
+        setStartingStatus(`Starting: ${be.name}...`)
         await window.api.processStart({
-          id: `${activeProject.id}-be-${i}`,
+          id: `${projectId}-be-${i}`,
           type: 'backend',
-          projectId: activeProject.id,
+          projectId,
           command: be.command,
           cwd: be.path,
           port: be.port
         })
+        setServiceStatus(projectId, `be-${i}`, 'running')
       }
 
       // Start frontend
-      if (activeProject.frontend) {
+      if (project.frontend) {
+        setServiceStatus(projectId, 'frontend', 'starting')
         setStartingStatus('Starting frontend...')
         await window.api.processStart({
-          id: `${activeProject.id}-fe`,
+          id: `${projectId}-fe`,
           type: 'frontend',
-          projectId: activeProject.id,
-          command: activeProject.frontend.command,
-          cwd: activeProject.frontend.path,
-          port: activeProject.frontend.port
+          projectId,
+          command: project.frontend.command,
+          cwd: project.frontend.path,
+          port: project.frontend.port
         })
+        setServiceStatus(projectId, 'frontend', 'running')
       }
 
-      // Start proxy if we have both FE and at least one BE
-      if (activeProject.frontend && activeProject.backends.length > 0) {
+      // Start proxy
+      if (project.frontend && project.backends.length > 0) {
         setStartingStatus('Starting proxy...')
-        const proxyOk = await startProxy(activeProject.frontend.port, activeProject.backends[0].port)
+        const proxyOk = await startProxy(project.frontend.port, project.backends[0].port)
         if (!proxyOk) {
-          setStartingStatus('Proxy failed to start!')
-          setTimeout(() => setStartingStatus(null), 5000)
-          setProjectStatus(activeProject.id, 'error')
+          setStartingStatus('Proxy failed!')
+          setTimeout(() => setStartingStatus(null), 3000)
+          setProjectStatus(projectId, 'error')
           return
         }
       }
 
-      setProjectStatus(activeProject.id, 'running')
+      setProjectStatus(projectId, 'running')
       setStartingStatus(null)
 
-      // Auto-open browser tab after a delay to let frontend dev server fully initialize
-      if (onOpenBrowser && activeProject.frontend) {
-        const port = activeProject.backends.length > 0
-          ? activeProject.proxyPort   // Use proxy port when both FE and BE exist
-          : activeProject.frontend.port // Use frontend port directly if no backend
-        setTimeout(() => {
-          onOpenBrowser(`http://localhost:${port}`)
-        }, 1000)
+      if (onOpenBrowser && project.frontend) {
+        const port = project.backends.length > 0 ? project.proxyPort : project.frontend.port
+        setTimeout(() => onOpenBrowser(`http://localhost:${port}`), 1000)
       }
     } catch (err) {
-      setStartingStatus(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
-      setTimeout(() => setStartingStatus(null), 5000)
-      setProjectStatus(activeProject.id, 'error')
+      setStartingStatus(`Error: ${err instanceof Error ? err.message : 'Unknown'}`)
+      setTimeout(() => setStartingStatus(null), 3000)
+      setProjectStatus(projectId, 'error')
     }
-  }
+  }, [projects, setServiceStatus, setProjectStatus, parseRoutes, startProxy, onOpenBrowser])
 
-  const handleStopAll = async () => {
-    if (!activeProject || !window.api) return
+  const handleStopProject = useCallback(async (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project || !window.api) return
+
     await window.api.processStopAll()
     await stopProxy()
-    setProjectStatus(activeProject.id, 'stopped')
+
+    if (project.frontend) setServiceStatus(projectId, 'frontend', 'stopped')
+    for (let i = 0; i < project.backends.length; i++) {
+      setServiceStatus(projectId, `be-${i}`, 'stopped')
+    }
+    setProjectStatus(projectId, 'stopped')
+  }, [projects, setServiceStatus, setProjectStatus, stopProxy])
+
+  // Derive overall project status from its services
+  const deriveProjectStatus = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId)
+    if (!project) return
+    const statuses: string[] = []
+    if (project.frontend?.serviceStatus) statuses.push(project.frontend.serviceStatus)
+    for (const be of project.backends) {
+      if (be.serviceStatus) statuses.push(be.serviceStatus)
+    }
+    if (statuses.some((s) => s === 'running' || s === 'starting')) {
+      setProjectStatus(projectId, 'running')
+    } else if (statuses.some((s) => s === 'error')) {
+      setProjectStatus(projectId, 'error')
+    } else {
+      setProjectStatus(projectId, 'stopped')
+    }
   }
 
   const handleResumeSession = useCallback(
@@ -109,54 +208,21 @@ export default function HomePage({ onOpenBrowser }: HomePageProps) {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Control bar */}
-      {activeProject && (
-        <div className="flex items-center gap-3 px-4 py-1.5 bg-panel dark:bg-panel-dark border-b border-border dark:border-border-dark">
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
-            {activeProject.name}
-          </span>
-          <button
-            onClick={activeProject.status === 'running' ? handleStopAll : handleStartAll}
-            disabled={!!startingStatus}
-            className={`px-3 py-1 text-[11px] rounded font-medium ${
-              startingStatus
-                ? 'bg-gray-500/10 text-gray-400 cursor-wait'
-                : activeProject.status === 'running'
-                  ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20'
-                  : 'bg-green-500/10 text-green-500 hover:bg-green-500/20'
-            }`}
-          >
-            {startingStatus || (activeProject.status === 'running' ? 'Stop All' : 'Start All')}
-          </button>
-
-          <div className="ml-auto flex items-center gap-3 text-[10px]">
-            {activeProject.backends.map((be, i) => (
-              <span key={i} className={`${be.external ? 'text-amber-500 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
-                {be.name} :{be.port}{be.external ? ' (ext)' : ''}
-              </span>
-            ))}
-            {activeProject.frontend && (
-              <span className="text-gray-500 dark:text-gray-400">
-                FE :{activeProject.frontend.port}
-              </span>
-            )}
-            {isRunning && (
-              <span className="text-green-500" title={`Proxy :${activeProject.proxyPort} → FE :${activeProject.frontend?.port || '?'}, ${rules.filter(r => r.enabled).length} API routes → BE`}>
-                Proxy :{activeProject.proxyPort}
-              </span>
-            )}
-            {rules.length > 0 && (
-              <span className="text-gray-400" title={rules.slice(0, 5).map(r => `${r.method} ${r.pathPattern} → :${r.targetPort}`).join('\n')}>
-                {rules.filter((r) => r.enabled).length} routes
-              </span>
-            )}
-          </div>
+      {/* Thin status bar — only shows when something is running */}
+      {activeProject && startingStatus && (
+        <div className="flex items-center px-4 py-1 bg-panel dark:bg-panel-dark border-b border-border dark:border-border-dark text-[11px] text-gray-500">
+          <span className="animate-pulse">{startingStatus}</span>
         </div>
       )}
 
       <PanelGroup direction="horizontal" className="flex-1">
         <Panel defaultSize={20} minSize={15} maxSize={35}>
-          <ProjectPanel />
+          <ProjectPanel
+            onStartProject={handleStartProject}
+            onStopProject={handleStopProject}
+            onStartService={handleStartService}
+            onStopService={handleStopService}
+          />
         </Panel>
         <PanelResizeHandle className="w-[1px] bg-border dark:bg-border-dark hover:bg-accent transition-colors" />
         <Panel defaultSize={30} minSize={20} maxSize={50}>

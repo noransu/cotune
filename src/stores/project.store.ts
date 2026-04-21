@@ -2,13 +2,15 @@ import { create } from 'zustand'
 
 export interface BackendService {
   name: string // e.g. "user-service", "order-service"
-  path: string
+  path: string // project root directory (used for cwd when running commands)
   command: string
   port: number
   framework: 'spring-boot' | 'express' | 'other'
   external?: boolean // true = managed externally (e.g. IDEA), CoTune only proxies
   contextPath?: string // e.g. "/trumpet-user" — from server.servlet.context-path
   apiPrefix?: string // e.g. "/api" — gateway prefix the frontend adds, stripped when forwarding to local backend
+  serviceStatus?: 'stopped' | 'running' | 'starting' | 'error' // per-service run state
+  modulePath?: string // specific submodule directory for route scanning (e.g. /project/user-service)
 }
 
 export interface ProjectConfig {
@@ -18,6 +20,7 @@ export interface ProjectConfig {
     path: string
     command: string
     port: number
+    serviceStatus?: 'stopped' | 'running' | 'starting' | 'error'
   }
   backends: BackendService[] // supports multiple backend entry points
   proxyPort: number
@@ -35,6 +38,7 @@ interface ProjectStore {
   updateProject: (project: ProjectConfig) => Promise<void>
   deleteProject: (id: string) => Promise<void>
   setProjectStatus: (id: string, status: ProjectConfig['status']) => void
+  setServiceStatus: (projectId: string, serviceKey: string, status: 'stopped' | 'running' | 'starting' | 'error') => void
 }
 
 export const useProjectStore = create<ProjectStore>((set) => ({
@@ -90,6 +94,27 @@ export const useProjectStore = create<ProjectStore>((set) => ({
   setProjectStatus: (id: string, status: ProjectConfig['status']) => {
     set((state) => ({
       projects: state.projects.map((p) => (p.id === id ? { ...p, status } : p))
+    }))
+  },
+
+  setServiceStatus: (projectId: string, serviceKey: string, status: 'stopped' | 'running' | 'starting' | 'error') => {
+    set((state) => ({
+      projects: state.projects.map((p) => {
+        if (p.id !== projectId) return p
+        if (serviceKey === 'frontend' && p.frontend) {
+          return { ...p, frontend: { ...p.frontend, serviceStatus: status } }
+        }
+        const beMatch = serviceKey.match(/^be-(\d+)$/)
+        if (beMatch) {
+          const idx = parseInt(beMatch[1])
+          const backends = [...p.backends]
+          if (backends[idx]) {
+            backends[idx] = { ...backends[idx], serviceStatus: status }
+          }
+          return { ...p, backends }
+        }
+        return p
+      })
     }))
   }
 }))

@@ -1,5 +1,6 @@
 import * as pty from 'node-pty'
 import * as os from 'os'
+import { execSync } from 'child_process'
 
 export interface PtyInstance {
   id: string
@@ -9,8 +10,35 @@ export interface PtyInstance {
   rows: number
 }
 
+/**
+ * Resolve the user's full shell PATH.
+ *
+ * When Electron is launched as a GUI app on macOS, process.env.PATH is the
+ * minimal launchd PATH. This function spawns a login shell to get the real PATH.
+ */
+function resolveShellPath(): string {
+  if (os.platform() === 'win32') return process.env.PATH || ''
+  try {
+    const userShell = process.env.SHELL || '/bin/zsh'
+    const result = execSync(`${userShell} -ilc 'echo -n "$PATH"'`, {
+      encoding: 'utf-8',
+      timeout: 5000,
+      env: { ...process.env },
+      stdio: ['pipe', 'pipe', 'pipe']
+    })
+    return result.trim() || process.env.PATH || ''
+  } catch {
+    return process.env.PATH || ''
+  }
+}
+
 export class PtyManager {
   private ptys = new Map<string, PtyInstance>()
+  private resolvedPath: string
+
+  constructor() {
+    this.resolvedPath = resolveShellPath()
+  }
 
   createPty(
     projectId: string,
@@ -28,16 +56,19 @@ export class PtyManager {
         ? 'powershell.exe'
         : process.env.SHELL || '/bin/zsh'
 
+    const env: Record<string, string> = {
+      ...(process.env as Record<string, string>),
+      TERM: 'xterm-256color',
+      COLORTERM: 'truecolor',
+      PATH: this.resolvedPath || process.env.PATH || ''
+    }
+
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols: Math.max(cols, 1),
       rows: Math.max(rows, 1),
       cwd: projectPath,
-      env: {
-        ...process.env,
-        TERM: 'xterm-256color',
-        COLORTERM: 'truecolor'
-      } as Record<string, string>
+      env
     })
 
     const instance: PtyInstance = {
@@ -56,19 +87,31 @@ export class PtyManager {
     return this.ptys.get(projectId)
   }
 
-  writePty(projectId: string, data: string): void {
+  writePty(projectId: string, data: string): boolean {
     const instance = this.ptys.get(projectId)
     if (instance) {
-      instance.ptyProcess.write(data)
+      try {
+        instance.ptyProcess.write(data)
+        return true
+      } catch (err) {
+        console.error(`[PTY] Write failed for ${projectId}:`, err)
+        return false
+      }
     }
+    console.warn(`[PTY] No PTY found for ${projectId}, write ignored`)
+    return false
   }
 
   resizePty(projectId: string, cols: number, rows: number): void {
     const instance = this.ptys.get(projectId)
     if (instance) {
-      instance.ptyProcess.resize(Math.max(cols, 1), Math.max(rows, 1))
-      instance.cols = cols
-      instance.rows = rows
+      try {
+        instance.ptyProcess.resize(Math.max(cols, 1), Math.max(rows, 1))
+        instance.cols = cols
+        instance.rows = rows
+      } catch (err) {
+        console.error(`[PTY] Resize failed for ${projectId}:`, err)
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import { BrowserWindow, BrowserView, session, ipcMain } from 'electron'
+import { safeSend } from '../utils/safe-send'
 
 interface BrowserTab {
   id: string
@@ -14,7 +15,7 @@ export class BrowserTabManager {
   private proxyPort: number = 9000
   private headerHeight = 40 // title bar height
   private addressBarHeight = 36
-  private logBarHeight = 28
+  private sidePanelWidth = 0 // width of the right side panel (routes/logs)
 
   constructor(mainWindow: BrowserWindow) {
     this.mainWindow = mainWindow
@@ -55,18 +56,18 @@ export class BrowserTabManager {
     // Listen for title changes
     view.webContents.on('page-title-updated', (_event, title) => {
       tab.title = title
-      this.mainWindow.webContents.send('browser:title-updated', { id, title })
+      safeSend(this.mainWindow, 'browser:title-updated', { id, title })
     })
 
     // Listen for URL changes
     view.webContents.on('did-navigate', (_event, url) => {
       tab.url = url
-      this.mainWindow.webContents.send('browser:url-updated', { id, url })
+      safeSend(this.mainWindow, 'browser:url-updated', { id, url })
     })
 
     view.webContents.on('did-navigate-in-page', (_event, url) => {
       tab.url = url
-      this.mainWindow.webContents.send('browser:url-updated', { id, url })
+      safeSend(this.mainWindow, 'browser:url-updated', { id, url })
     })
 
     // Load URL
@@ -162,6 +163,11 @@ export class BrowserTabManager {
     }
   }
 
+  setSidePanelWidth(width: number): void {
+    this.sidePanelWidth = width
+    this.updateBounds()
+  }
+
   updateBounds(): void {
     if (!this.activeTabId) return
     const tab = this.tabs.get(this.activeTabId)
@@ -169,13 +175,12 @@ export class BrowserTabManager {
 
     const [width, height] = this.mainWindow.getContentSize()
     const topOffset = this.headerHeight + this.addressBarHeight
-    const bottomOffset = this.logBarHeight
 
     tab.view.setBounds({
       x: 0,
       y: topOffset,
-      width: width,
-      height: height - topOffset - bottomOffset
+      width: Math.max(0, width - this.sidePanelWidth),
+      height: height - topOffset
     })
   }
 
@@ -246,6 +251,11 @@ export function registerBrowserHandlers(
 
   ipcMain.handle('browser:setProxyPort', (_event, { port }) => {
     tabManager.setProxyPort(port)
+    return { success: true }
+  })
+
+  ipcMain.handle('browser:setSidePanelWidth', (_event, { width }) => {
+    tabManager.setSidePanelWidth(width)
     return { success: true }
   })
 

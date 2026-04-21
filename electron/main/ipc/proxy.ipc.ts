@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow } from 'electron'
 import { ProxyServer, ProxyRule, ProxyLogEntry } from '../services/proxy-server'
 import { parseSpringBootRoutes, ParsedRoute } from '../services/route-parser'
+import { safeSend } from '../utils/safe-send'
 
 let proxyServer: ProxyServer | null = null
 
@@ -33,9 +34,7 @@ export function registerProxyHandlers(mainWindow: BrowserWindow): void {
 
         // Forward request logs to renderer
         proxyServer.on('request', (logEntry: ProxyLogEntry) => {
-          if (!mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('proxy:log', logEntry)
-          }
+          safeSend(mainWindow, 'proxy:log', logEntry)
         })
 
         await proxyServer.start()

@@ -129,9 +129,9 @@ export const useProxyStore = create<ProxyStore>((set, get) => {
   parseRoutes: async (projectPath: string, backendPort: number, opts?: { contextPath?: string; apiPrefix?: string }) => {
     const result = await window.api.proxyParseRoutes(projectPath)
     if (result.success && result.routes) {
-      // Only use explicitly configured values; auto-detected contextPath is just a UI hint
       const contextPath = opts?.contextPath ?? ''
       const apiPrefix = opts?.apiPrefix ?? ''
+      const existingRules = get().rules
 
       const newRules: ProxyRule[] = result.routes.map(
         (route: { method: string; path: string; className: string; methodName: string }) => {
@@ -149,10 +149,14 @@ export const useProxyStore = create<ProxyStore>((set, get) => {
           }
         }
       )
-      set({ rules: newRules })
-      return { rules: newRules, detectedContextPath: result.contextPath || '' }
+
+      // Merge: keep rules from other backends, replace rules for this backend
+      const otherRules = existingRules.filter((r) => r.targetPort !== backendPort)
+      const mergedRules = [...otherRules, ...newRules]
+      set({ rules: mergedRules })
+      return { rules: mergedRules, detectedContextPath: result.contextPath || '' }
     }
-    return { rules: [], detectedContextPath: '' }
+    return { rules: get().rules, detectedContextPath: '' }
   }
   }
 })

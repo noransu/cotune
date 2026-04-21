@@ -26,6 +26,7 @@ export default function XTerminal({ projectId, projectPath }: XTerminalProps) {
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
       lineHeight: 1.2,
       scrollback: 10000,
+      allowProposedApi: true,
       theme: {
         background: '#1e1e2e',
         foreground: '#cdd6f4',
@@ -70,7 +71,17 @@ export default function XTerminal({ projectId, projectPath }: XTerminalProps) {
         cols: terminal.cols,
         rows: terminal.rows
       })
-      .then(() => {
+      .then((result) => {
+        if (result && result.success === false) {
+          terminal.writeln(
+            `\r\n\x1b[31m[Error] Failed to create terminal: ${result.error || 'Unknown error'}\x1b[0m`
+          )
+          terminal.writeln(
+            '\x1b[33m[Hint] Native modules may need rebuilding: npm run rebuild\x1b[0m'
+          )
+          return
+        }
+
         // Listen for PTY data
         const disposeData = window.api.onPtyData(projectId, (data) => {
           terminal.write(data)
@@ -84,6 +95,11 @@ export default function XTerminal({ projectId, projectPath }: XTerminalProps) {
           )
         })
         disposeRef.current.push(disposeExit)
+      })
+      .catch((err) => {
+        terminal.writeln(
+          `\r\n\x1b[31m[Error] Terminal initialization failed: ${err?.message || err}\x1b[0m`
+        )
       })
 
     // Forward user input to PTY

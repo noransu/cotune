@@ -157,6 +157,8 @@ const api = {
     ipcRenderer.invoke('browser:devtools', opts),
   browserSetProxyPort: (opts: { port: number }) =>
     ipcRenderer.invoke('browser:setProxyPort', opts),
+  browserSetSidePanelWidth: (opts: { width: number }) =>
+    ipcRenderer.invoke('browser:setSidePanelWidth', opts),
   onBrowserTitleUpdated: (callback: (data: { id: string; title: string }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, data: { id: string; title: string }) =>
       callback(data)

@@ -87,9 +87,11 @@ export default function App() {
         onNewTab={addBrowserTab}
       />
       <main className="flex-1 overflow-hidden">
-        {activeTabId === 'home' ? (
+        {/* HomePage is always mounted to preserve terminal state; hidden when inactive */}
+        <div className={`h-full ${activeTabId !== 'home' ? 'hidden' : ''}`}>
           <HomePage onOpenBrowser={openBrowserWithUrl} />
-        ) : (
+        </div>
+        {activeTab && activeTab.type === 'browser' && (
           <BrowserPage
             tabId={activeTabId}
             url={activeTab?.url || ''}

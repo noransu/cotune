@@ -8,6 +8,7 @@ import { registerProxyHandlers } from './ipc/proxy.ipc'
 import { registerProcessHandlers, processManager } from './ipc/process.ipc'
 import { BrowserTabManager, registerBrowserHandlers } from './services/browser-tab-manager'
 import { PtyManager } from './services/pty-manager'
+import { safeSend } from './utils/safe-send'
 
 let mainWindow: BrowserWindow | null = null
 let tabManager: BrowserTabManager | null = null
@@ -70,10 +71,10 @@ function registerWindowHandlers(): void {
   })
 
   mainWindow?.on('maximize', () => {
-    mainWindow?.webContents.send('window:maximized-changed', true)
+    safeSend(mainWindow, 'window:maximized-changed', true)
   })
   mainWindow?.on('unmaximize', () => {
-    mainWindow?.webContents.send('window:maximized-changed', false)
+    safeSend(mainWindow, 'window:maximized-changed', false)
   })
 }
 
