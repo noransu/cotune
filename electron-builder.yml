@@ -8,6 +8,10 @@ files:
   - '!electron.vite.config.*'
   - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  # Exclude locally-compiled node-pty artifacts (wrong arch on cross-builds).
+  # node-pty will fall back to prebuilds/darwin-{arch}/pty.node which is correct.
+  - '!**/node_modules/node-pty/build'
+  - '!**/node_modules/node-pty/bin'
 npmRebuild: true
 nodeGypRebuild: false
 buildDependenciesFromSource: false
