@@ -42,6 +42,7 @@ export default function HomePage() {
         <Panel defaultSize={50} minSize={30}>
           <TerminalPanel
             onActivePtyIdChange={setActivePtyId}
+            workspaceId={activeWorkspaceId}
             workspacePath={activeWorkspace?.path}
           />
         </Panel>

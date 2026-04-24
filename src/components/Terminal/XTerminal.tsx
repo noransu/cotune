@@ -7,9 +7,11 @@ import '@xterm/xterm/css/xterm.css'
 interface XTerminalProps {
   projectId: string
   projectPath?: string
+  /** If true, XTerminal will destroy the PTY when unmounting. Default false. */
+  destroyOnUnmount?: boolean
 }
 
-export default function XTerminal({ projectId, projectPath }: XTerminalProps) {
+export default function XTerminal({ projectId, projectPath, destroyOnUnmount = false }: XTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -131,7 +133,11 @@ export default function XTerminal({ projectId, projectPath }: XTerminalProps) {
       disposeRef.current.forEach((fn) => fn())
       disposeRef.current = []
       terminal.dispose()
-      window.api.ptyDestroy({ projectId })
+      // Only destroy the PTY process if explicitly requested.
+      // By default, PTY lifecycle is managed by the parent (TerminalPanel).
+      if (destroyOnUnmount) {
+        window.api.ptyDestroy({ projectId })
+      }
     }
   }, [projectId, projectPath])
 
