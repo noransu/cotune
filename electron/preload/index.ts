@@ -73,9 +73,19 @@ const api = {
   projectDetectBackendEntries: (dirPath: string) =>
     ipcRenderer.invoke('project:detectBackendEntries', dirPath),
 
+  // ===== Workspace (Home page project directories) =====
+  workspaceList: () => ipcRenderer.invoke('workspace:list'),
+  workspaceGetActive: () => ipcRenderer.invoke('workspace:getActive'),
+  workspaceSetActive: (id: string) => ipcRenderer.invoke('workspace:setActive', id),
+  workspaceCreate: (ws: unknown) => ipcRenderer.invoke('workspace:create', ws),
+  workspaceUpdate: (ws: unknown) => ipcRenderer.invoke('workspace:update', ws),
+  workspaceDelete: (id: string) => ipcRenderer.invoke('workspace:delete', id),
+
   // ===== Session (CodeMaker CLI) =====
   sessionList: (opts: { directories?: string[]; limit?: number }) =>
     ipcRenderer.invoke('session:list', opts),
+  sessionListByPrefix: (opts: { directory: string; limit?: number }) =>
+    ipcRenderer.invoke('session:listByPrefix', opts),
   sessionGetParts: (opts: { sessionId: string; types?: string[]; limit?: number }) =>
     ipcRenderer.invoke('session:getParts', opts),
   sessionDbExists: () => ipcRenderer.invoke('session:dbExists'),

@@ -134,6 +134,43 @@ export function registerSessionHandlers(): void {
     }
   )
 
+  // List sessions under a directory prefix (for Home page workspace)
+  ipcMain.handle(
+    'session:listByPrefix',
+    async (
+      _event,
+      { directory, limit }: { directory: string; limit?: number }
+    ) => {
+      try {
+        const Database = (await import('better-sqlite3')).default
+        const dbPath = getDbPath()
+
+        if (!existsSync(dbPath)) {
+          return []
+        }
+
+        const db = new Database(dbPath, { readonly: true })
+        const maxResults = limit || 50
+
+        // Match exact directory OR any subdirectory
+        const query = `
+          SELECT s.id, s.title, s.slug, s.directory, s.project_id as projectId,
+                 s.time_created as timeCreated, s.time_updated as timeUpdated
+          FROM session s
+          WHERE s.directory = ? OR s.directory LIKE ? || '/%'
+          ORDER BY s.time_updated DESC
+          LIMIT ?
+        `
+        const sessions = db.prepare(query).all(directory, directory, maxResults)
+        db.close()
+        return sessions
+      } catch (error) {
+        console.error('Failed to read sessions by prefix:', error)
+        return []
+      }
+    }
+  )
+
   // Check if CodeMaker DB exists
   ipcMain.handle('session:dbExists', () => {
     return existsSync(getDbPath())

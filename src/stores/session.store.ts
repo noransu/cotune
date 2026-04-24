@@ -29,6 +29,7 @@ interface SessionStore {
 
   checkDb: () => Promise<void>
   loadSessions: (directories: string[]) => Promise<void>
+  loadSessionsByPrefix: (directory: string) => Promise<void>
   selectSession: (sessionId: string) => Promise<void>
   clearSelection: () => void
 }
@@ -54,6 +55,20 @@ export const useSessionStore = create<SessionStore>((set) => ({
     set({ isLoading: true })
     try {
       const sessions = await window.api.sessionList({ directories, limit: 50 })
+      set({ sessions: sessions || [], isLoading: false })
+    } catch {
+      set({ sessions: [], isLoading: false })
+    }
+  },
+
+  loadSessionsByPrefix: async (directory: string) => {
+    if (!window.api || !directory) {
+      set({ sessions: [] })
+      return
+    }
+    set({ isLoading: true })
+    try {
+      const sessions = await window.api.sessionListByPrefix({ directory, limit: 50 })
       set({ sessions: sessions || [], isLoading: false })
     } catch {
       set({ sessions: [], isLoading: false })

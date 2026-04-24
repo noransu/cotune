@@ -56,11 +56,19 @@ export class PtyManager {
         ? 'powershell.exe'
         : process.env.SHELL || '/bin/zsh'
 
+    // Ensure UTF-8 locale is set for CJK character support.
+    // On macOS, Electron GUI apps often inherit a minimal environment
+    // where LANG / LC_CTYPE are missing, causing multibyte garbling.
+    const lang = process.env.LANG || 'en_US.UTF-8'
+
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
       TERM: 'xterm-256color',
       COLORTERM: 'truecolor',
-      PATH: this.resolvedPath || process.env.PATH || ''
+      PATH: this.resolvedPath || process.env.PATH || '',
+      LANG: lang,
+      LC_CTYPE: process.env.LC_CTYPE || lang,
+      LC_ALL: process.env.LC_ALL || ''
     }
 
     const ptyProcess = pty.spawn(shell, [], {
@@ -68,7 +76,8 @@ export class PtyManager {
       cols: Math.max(cols, 1),
       rows: Math.max(rows, 1),
       cwd: projectPath,
-      env
+      env,
+      encoding: 'utf8'
     })
 
     const instance: PtyInstance = {

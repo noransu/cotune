@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useProjectStore } from '../../stores/project.store'
 import XTerminal from '../Terminal/XTerminal'
 
 interface ProcessLog {
@@ -17,10 +16,10 @@ let shellCounter = 0
 
 interface TerminalPanelProps {
   onActivePtyIdChange?: (ptyId: string) => void
+  workspacePath?: string
 }
 
-export default function TerminalPanel({ onActivePtyIdChange }: TerminalPanelProps) {
-  const { activeProjectId, projects } = useProjectStore()
+export default function TerminalPanel({ onActivePtyIdChange, workspacePath }: TerminalPanelProps) {
   const [isReady, setIsReady] = useState(false)
   const [shellTabs, setShellTabs] = useState<ShellTab[]>(() => {
     const id = `shell-${++shellCounter}`
@@ -100,26 +99,9 @@ export default function TerminalPanel({ onActivePtyIdChange }: TerminalPanelProp
     }
   }, [processLogs, activeTab, shellTabs])
 
-  // Clear process logs when project stops (triggered by project status change to 'stopped')
-  const activeProject = projects.find((p) => p.id === activeProjectId)
-  const prevStatusRef = useRef(activeProject?.status)
-  useEffect(() => {
-    const currentStatus = activeProject?.status
-    if (prevStatusRef.current === 'running' && currentStatus === 'stopped') {
-      // Project just stopped — clear all process output tabs
-      setProcessLogs(new Map())
-      // Switch to first shell tab if currently on a process tab
-      setActiveTab((current) => {
-        const isShellTab = shellTabs.some((t) => t.id === current)
-        if (!isShellTab) return shellTabs[0]?.id || current
-        return current
-      })
-    }
-    prevStatusRef.current = currentStatus
-  }, [activeProject?.status, shellTabs])
-
-  const terminalPath = activeProject?.frontend?.path || activeProject?.backends?.[0]?.path || undefined
-  const terminalId = activeProjectId || 'default'
+  // Clear process logs when workspace changes (Home page doesn't manage processes)
+  const terminalPath = workspacePath || undefined
+  const terminalId = workspacePath ? `ws-${workspacePath.split('/').pop() || 'default'}` : 'default'
 
   // Notify parent of the active PTY ID when active shell tab changes
   useEffect(() => {

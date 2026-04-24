@@ -6,6 +6,7 @@ import { registerProjectHandlers } from './ipc/project.ipc'
 import { registerSessionHandlers } from './ipc/session.ipc'
 import { registerProxyHandlers } from './ipc/proxy.ipc'
 import { registerProcessHandlers, processManager } from './ipc/process.ipc'
+import { registerWorkspaceHandlers } from './ipc/workspace.ipc'
 import { BrowserTabManager, registerBrowserHandlers } from './services/browser-tab-manager'
 import { PtyManager } from './services/pty-manager'
 import { safeSend } from './utils/safe-send'
@@ -24,7 +25,7 @@ function createWindow(): void {
     frame: false,
     titleBarStyle: 'hidden',
     trafficLightPosition: { x: -100, y: -100 },
-    backgroundColor: '#1e1e2e',
+    backgroundColor: '#ffffff',
     icon: join(__dirname, '../../build/icon.png'),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -94,6 +95,7 @@ app.whenReady().then(() => {
   registerSessionHandlers()
   registerProxyHandlers(mainWindow!)
   registerProcessHandlers(mainWindow!)
+  registerWorkspaceHandlers()
   registerBrowserHandlers(mainWindow!, tabManager!)
 })
 

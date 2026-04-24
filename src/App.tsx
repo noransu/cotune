@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import TitleBar from './components/TitleBar/TitleBar'
+import MenuBar from './components/MenuBar/MenuBar'
 import HomePage from './components/HomePage/HomePage'
+import DebugPage from './components/DebugPage/DebugPage'
 import BrowserPage from './components/BrowserView/BrowserPage'
 
 export interface Tab {
@@ -15,6 +17,7 @@ export default function App() {
     { id: 'home', type: 'home', title: 'Home' }
   ])
   const [activeTabId, setActiveTabId] = useState('home')
+  const [currentView, setCurrentView] = useState<'home' | 'debug'>('home')
 
   // Listen for browser title/url updates
   useEffect(() => {
@@ -54,7 +57,7 @@ export default function App() {
     await window.api.browserCreateTab({ id })
   }
 
-  // Open browser tab with a specific URL (used by Start All)
+  // Open browser tab with a specific URL (used by Debug page Start All)
   const openBrowserWithUrl = useCallback(async (url: string) => {
     if (!window.api) return
     const id = `browser-${Date.now()}`
@@ -75,6 +78,12 @@ export default function App() {
     }
   }
 
+  // Switching menu view also ensures we're on the home tab
+  const handleViewChange = useCallback((view: 'home' | 'debug') => {
+    setCurrentView(view)
+    setActiveTabId('home')
+  }, [])
+
   const activeTab = tabs.find((t) => t.id === activeTabId)
 
   return (
@@ -86,17 +95,24 @@ export default function App() {
         onTabClose={closeTab}
         onNewTab={addBrowserTab}
       />
-      <main className="flex-1 overflow-hidden">
-        {/* HomePage is always mounted to preserve terminal state; hidden when inactive */}
-        <div className={`h-full ${activeTabId !== 'home' ? 'hidden' : ''}`}>
-          <HomePage onOpenBrowser={openBrowserWithUrl} />
+      <main className="flex-1 overflow-hidden flex">
+        <MenuBar currentView={currentView} onViewChange={handleViewChange} />
+        <div className="flex-1 overflow-hidden">
+          {/* HomePage is always mounted to preserve terminal state; hidden when inactive */}
+          <div className={`h-full ${activeTabId !== 'home' || currentView !== 'home' ? 'hidden' : ''}`}>
+            <HomePage />
+          </div>
+          {/* DebugPage is always mounted to preserve process state; hidden when inactive */}
+          <div className={`h-full ${activeTabId !== 'home' || currentView !== 'debug' ? 'hidden' : ''}`}>
+            <DebugPage onOpenBrowser={openBrowserWithUrl} />
+          </div>
+          {activeTab && activeTab.type === 'browser' && (
+            <BrowserPage
+              tabId={activeTabId}
+              url={activeTab?.url || ''}
+            />
+          )}
         </div>
-        {activeTab && activeTab.type === 'browser' && (
-          <BrowserPage
-            tabId={activeTabId}
-            url={activeTab?.url || ''}
-          />
-        )}
       </main>
     </div>
   )

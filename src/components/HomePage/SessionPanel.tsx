@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useSessionStore } from '../../stores/session.store'
-import { useProjectStore } from '../../stores/project.store'
-
-type SessionFilter = 'all' | 'frontend' | 'backend'
+import { useWorkspaceStore } from '../../stores/workspace.store'
 
 interface SessionPanelProps {
   onResumeSession?: (sessionId: string, directory: string) => void
@@ -16,53 +14,40 @@ export default function SessionPanel({ onResumeSession }: SessionPanelProps) {
     isLoading,
     dbExists,
     checkDb,
-    loadSessions,
+    loadSessionsByPrefix,
     selectSession
   } = useSessionStore()
-  const { activeProjectId, projects } = useProjectStore()
-  const [filter, setFilter] = useState<SessionFilter>('all')
+  const { activeWorkspaceId, workspaces } = useWorkspaceStore()
   const [searchQuery, setSearchQuery] = useState('')
+
+  const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId)
 
   useEffect(() => {
     checkDb()
   }, [checkDb])
 
-  const activeProject = projects.find((p) => p.id === activeProjectId)
-
-  // Collect directories for the current filter
-  const getDirectories = (f: SessionFilter): string[] => {
-    if (!activeProject) return []
-    const dirs: string[] = []
-    if ((f === 'all' || f === 'frontend') && activeProject.frontend?.path) {
-      dirs.push(activeProject.frontend.path)
-    }
-    if ((f === 'all' || f === 'backend') && activeProject.backends) {
-      for (const be of activeProject.backends) {
-        dirs.push(be.path)
-      }
-    }
-    return dirs
-  }
-
-  // Load sessions when project or filter changes
+  // Load sessions when workspace changes
   useEffect(() => {
-    if (!dbExists || !activeProject) {
-      loadSessions([])
+    if (!dbExists || !activeWorkspace) {
+      loadSessionsByPrefix('')
       return
     }
-    loadSessions(getDirectories(filter))
-  }, [activeProjectId, dbExists, filter, projects, loadSessions])
+    loadSessionsByPrefix(activeWorkspace.path)
+  }, [activeWorkspaceId, dbExists, loadSessionsByPrefix, activeWorkspace?.path])
+
+  const handleRefresh = useCallback(() => {
+    if (!activeWorkspace) return
+    loadSessionsByPrefix(activeWorkspace.path)
+  }, [activeWorkspace, loadSessionsByPrefix])
 
   const selectedSession = sessions.find((s) => s.id === selectedSessionId)
-  const hasFe = !!activeProject?.frontend
-  const hasBe = activeProject?.backends && activeProject.backends.length > 0
 
   // --- Empty states ---
 
   if (!dbExists) {
     return (
       <div className="h-full flex flex-col bg-surface dark:bg-surface-dark">
-        <Header count={0} />
+        <Header count={0} isLoading={false} onRefresh={handleRefresh} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-xs text-gray-400 dark:text-gray-500 px-4">
             <p className="mb-2">CodeMaker CLI not detected</p>
@@ -73,10 +58,10 @@ export default function SessionPanel({ onResumeSession }: SessionPanelProps) {
     )
   }
 
-  if (!activeProjectId) {
+  if (!activeWorkspaceId) {
     return (
       <div className="h-full flex flex-col bg-surface dark:bg-surface-dark">
-        <Header count={0} />
+        <Header count={0} isLoading={false} onRefresh={handleRefresh} />
         <div className="flex-1 flex items-center justify-center">
           <p className="text-xs text-gray-400 dark:text-gray-500">Select a project first</p>
         </div>
@@ -86,7 +71,7 @@ export default function SessionPanel({ onResumeSession }: SessionPanelProps) {
 
   return (
     <div className="h-full flex flex-col bg-surface dark:bg-surface-dark">
-      <Header count={sessions.length} isLoading={isLoading} />
+      <Header count={sessions.length} isLoading={isLoading} onRefresh={handleRefresh} />
 
       {/* Search bar */}
       <div className="px-2 py-1.5 border-b border-border dark:border-border-dark">
@@ -111,19 +96,6 @@ export default function SessionPanel({ onResumeSession }: SessionPanelProps) {
           )}
         </div>
       </div>
-
-      {/* Filter tabs */}
-      {(hasFe || hasBe) && (
-        <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border dark:border-border-dark">
-          <FilterTab label="All" active={filter === 'all'} onClick={() => setFilter('all')} />
-          {hasFe && (
-            <FilterTab label="Frontend" active={filter === 'frontend'} onClick={() => setFilter('frontend')} />
-          )}
-          {hasBe && (
-            <FilterTab label="Backend" active={filter === 'backend'} onClick={() => setFilter('backend')} />
-          )}
-        </div>
-      )}
 
       {/* Session List */}
       {(() => {
@@ -216,7 +188,7 @@ export default function SessionPanel({ onResumeSession }: SessionPanelProps) {
 
 // --- Sub-components ---
 
-function Header({ count, isLoading }: { count: number; isLoading?: boolean }) {
+function Header({ count, isLoading, onRefresh }: { count: number; isLoading: boolean; onRefresh: () => void }) {
   return (
     <div className="flex items-center px-3 py-2 border-b border-border dark:border-border-dark">
       <h2 className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wider">
@@ -227,25 +199,14 @@ function Header({ count, isLoading }: { count: number; isLoading?: boolean }) {
           {count}
         </span>
       )}
-      {isLoading && (
-        <span className="ml-auto text-[10px] text-gray-400 animate-pulse">loading...</span>
-      )}
+      <button
+        onClick={onRefresh}
+        title="Refresh sessions"
+        className="ml-auto p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+      >
+        <RefreshIcon spinning={isLoading} />
+      </button>
     </div>
-  )
-}
-
-function FilterTab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-2.5 py-1 text-[11px] rounded font-medium transition-colors ${
-        active
-          ? 'bg-accent/15 text-accent'
-          : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
-      }`}
-    >
-      {label}
-    </button>
   )
 }
 
@@ -277,6 +238,25 @@ function SearchIcon() {
     >
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  )
+}
+
+function RefreshIcon({ spinning }: { spinning: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={spinning ? 'animate-spin' : ''}
+    >
+      <polyline points="23 4 23 10 17 10" />
+      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
     </svg>
   )
 }
