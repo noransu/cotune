@@ -1,6 +1,6 @@
 {
   "name": "cotune",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Frontend-backend collaboration development tool",
   "main": "./out/main/index.js",
   "scripts": {
