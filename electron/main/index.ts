@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, clipboard } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerPtyHandlers } from './ipc/pty.ipc'
@@ -7,6 +7,7 @@ import { registerSessionHandlers } from './ipc/session.ipc'
 import { registerProxyHandlers } from './ipc/proxy.ipc'
 import { registerProcessHandlers, processManager } from './ipc/process.ipc'
 import { registerWorkspaceHandlers } from './ipc/workspace.ipc'
+import { registerGitLabHandlers } from './ipc/gitlab.ipc'
 import { BrowserTabManager, registerBrowserHandlers } from './services/browser-tab-manager'
 import { PtyManager } from './services/pty-manager'
 import { safeSend } from './utils/safe-send'
@@ -70,6 +71,10 @@ function registerWindowHandlers(): void {
   ipcMain.handle('window:isMaximized', () => {
     return mainWindow?.isMaximized() ?? false
   })
+  ipcMain.handle('clipboard:write', (_event, text: string) => {
+    clipboard.writeText(text)
+    return true
+  })
 
   mainWindow?.on('maximize', () => {
     safeSend(mainWindow, 'window:maximized-changed', true)
@@ -96,6 +101,7 @@ app.whenReady().then(() => {
   registerProxyHandlers(mainWindow!)
   registerProcessHandlers(mainWindow!)
   registerWorkspaceHandlers()
+  registerGitLabHandlers()
   registerBrowserHandlers(mainWindow!, tabManager!)
 })
 

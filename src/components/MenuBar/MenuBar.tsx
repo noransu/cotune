@@ -1,6 +1,6 @@
 interface MenuBarProps {
-  currentView: 'home' | 'debug'
-  onViewChange: (view: 'home' | 'debug') => void
+  currentView: 'home' | 'debug' | 'gitlab'
+  onViewChange: (view: 'home' | 'debug' | 'gitlab') => void
 }
 
 export default function MenuBar({ currentView, onViewChange }: MenuBarProps) {
@@ -17,6 +17,12 @@ export default function MenuBar({ currentView, onViewChange }: MenuBarProps) {
         label="Debug"
         active={currentView === 'debug'}
         onClick={() => onViewChange('debug')}
+      />
+      <MenuItem
+        icon={<GitLabIcon />}
+        label="GitLab Search"
+        active={currentView === 'gitlab'}
+        onClick={() => onViewChange('gitlab')}
       />
     </div>
   )
@@ -84,12 +90,29 @@ function DebugIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      {/* Pipeline / connection icon: two nodes connected by a line */}
-      <circle cx="5" cy="12" r="3" />
-      <circle cx="19" cy="12" r="3" />
-      <line x1="8" y1="12" x2="16" y2="12" />
-      {/* Small arrows on the line to indicate data flow */}
-      <polyline points="13,9.5 16,12 13,14.5" />
+      {/* Git-branch / tree style icon */}
+      <line x1="6" y1="3" x2="6" y2="15" />
+      <circle cx="18" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M6 6a9 9 0 0 0 9 0" />
+    </svg>
+  )
+}
+
+function GitLabIcon() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <line x1="16.5" y1="16.5" x2="21" y2="21" />
     </svg>
   )
 }

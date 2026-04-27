@@ -4,6 +4,7 @@ import MenuBar from './components/MenuBar/MenuBar'
 import HomePage from './components/HomePage/HomePage'
 import DebugPage from './components/DebugPage/DebugPage'
 import BrowserPage from './components/BrowserView/BrowserPage'
+import GitLabSearchPage from './components/GitLabSearch/GitLabSearchPage'
 
 export interface Tab {
   id: string
@@ -17,7 +18,7 @@ export default function App() {
     { id: 'home', type: 'home', title: 'Home' }
   ])
   const [activeTabId, setActiveTabId] = useState('home')
-  const [currentView, setCurrentView] = useState<'home' | 'debug'>('home')
+  const [currentView, setCurrentView] = useState<'home' | 'debug' | 'gitlab'>('home')
 
   // Listen for browser title/url updates
   useEffect(() => {
@@ -79,7 +80,7 @@ export default function App() {
   }
 
   // Switching menu view also ensures we're on the home tab
-  const handleViewChange = useCallback((view: 'home' | 'debug') => {
+  const handleViewChange = useCallback((view: 'home' | 'debug' | 'gitlab') => {
     setCurrentView(view)
     setActiveTabId('home')
   }, [])
@@ -105,6 +106,10 @@ export default function App() {
           {/* DebugPage is always mounted to preserve process state; hidden when inactive */}
           <div className={`h-full ${activeTabId !== 'home' || currentView !== 'debug' ? 'hidden' : ''}`}>
             <DebugPage onOpenBrowser={openBrowserWithUrl} />
+          </div>
+          {/* GitLab Search */}
+          <div className={`h-full ${activeTabId !== 'home' || currentView !== 'gitlab' ? 'hidden' : ''}`}>
+            <GitLabSearchPage onOpenBrowser={openBrowserWithUrl} />
           </div>
           {activeTab && activeTab.type === 'browser' && (
             <BrowserPage

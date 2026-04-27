@@ -180,7 +180,51 @@ const api = {
       callback(data)
     ipcRenderer.on('browser:url-updated', listener)
     return () => ipcRenderer.removeListener('browser:url-updated', listener)
-  }
+  },
+
+  // ===== GitLab =====
+  gitlabGetInstances: () => ipcRenderer.invoke('gitlab:getInstances'),
+  gitlabAddInstance: (data: { name: string; url: string; token: string }) =>
+    ipcRenderer.invoke('gitlab:addInstance', data),
+  gitlabUpdateInstance: (instance: unknown) =>
+    ipcRenderer.invoke('gitlab:updateInstance', instance),
+  gitlabRemoveInstance: (id: string) =>
+    ipcRenderer.invoke('gitlab:removeInstance', id),
+  gitlabValidateToken: (data: { url: string; token: string }) =>
+    ipcRenderer.invoke('gitlab:validateToken', data),
+  gitlabGetGroups: (instanceId: string) =>
+    ipcRenderer.invoke('gitlab:getGroups', instanceId),
+  gitlabSearch: (params: {
+    instanceId: string
+    scope: string
+    query: string
+    groupId?: number
+    page?: number
+    perPage?: number
+  }) => ipcRenderer.invoke('gitlab:search', params),
+  gitlabGetFileContent: (data: {
+    instanceId: string
+    projectId: number
+    filePath: string
+    ref: string
+  }) => ipcRenderer.invoke('gitlab:getFileContent', data),
+  gitlabBuildWebUrl: (data: {
+    instanceId: string
+    projectPath: string
+    filePath: string
+    ref: string
+    line?: number
+  }) => ipcRenderer.invoke('gitlab:buildWebUrl', data),
+  gitlabBuildProjectUrl: (data: {
+    instanceId: string
+    projectPath: string
+  }) => ipcRenderer.invoke('gitlab:buildProjectUrl', data),
+  gitlabGetSettings: () => ipcRenderer.invoke('gitlab:getSettings'),
+  gitlabUpdateSettings: (settings: unknown) =>
+    ipcRenderer.invoke('gitlab:updateSettings', settings),
+
+  // ===== Clipboard =====
+  clipboardWrite: (text: string) => ipcRenderer.invoke('clipboard:write', text)
 }
 
 contextBridge.exposeInMainWorld('api', api)
